@@ -312,6 +312,12 @@ class TestDouble(mlx_tests.MLXTestCase):
             # values outside the float32 range used to saturate to inf or zero
             self.assertEqual((a * 1e300).tolist(), [1e300])
             self.assertEqual((a * 1e-300).tolist(), [1e-300])
+            self.assertEqual(
+                mx.full((2,), 1e300, dtype=mx.float64).tolist(), [1e300] * 2
+            )
+            self.assertEqual(
+                mx.full((2,), 1e-300, dtype=mx.float64).tolist(), [1e-300] * 2
+            )
 
             # every op that pairs a scalar with an array goes through the same
             # conversion
@@ -322,15 +328,16 @@ class TestDouble(mlx_tests.MLXTestCase):
             self.assertEqual(mx.where(mx.array([False]), zero, 0.1).tolist(), [0.1])
             self.assertEqual(mx.pad(a, 1, constant_values=0.1).tolist(), [0.1, 1.0, 0.1])
 
-            # the python float is still weak: it does not widen the array
-            for dtype in (mx.float16, mx.bfloat16, mx.float32):
-                self.assertEqual((mx.array([1.0], dtype=dtype) * 0.1).dtype, dtype)
-            self.assertEqual((mx.array([1], dtype=mx.int32) * 0.1).dtype, mx.float32)
+            # left-hand python scalar takes the other branch of to_arrays
+            self.assertEqual((0.1 * a).tolist(), [0.1])
+            self.assertEqual((0.1 - mx.array([0.0], dtype=mx.float64)).tolist(), [0.1])
+            self.assertEqual((1e300 / a).tolist(), [1e300])
+            self.assertEqual(mx.maximum(0.1, zero).tolist(), [0.1])
 
-            # pad() keeps returning the input's dtype for every input type
-            for dtype in (mx.int32, mx.float16, mx.bfloat16, mx.float32):
-                padded = mx.pad(mx.array([1.0], dtype=dtype), 1, constant_values=0.5)
-                self.assertEqual(padded.dtype, dtype)
+            # indexed assignment also resolves the python float in src.dtype()
+            a_set = mx.array([1.0, 2.0], dtype=mx.float64)
+            a_set[0] = 0.1
+            self.assertEqual(a_set.tolist(), [0.1, 2.0])
 
     def test_linspace(self):
         with mx.stream(mx.cpu):

@@ -2227,6 +2227,29 @@ class TestOps(mlx_tests.MLXTestCase):
         _, df = mx.vjp(f, [a_fwd], [a_bwd])
         self.assertTrue(mx.allclose(a_bwd[4:-2, 2:-4], df[0]).item())
 
+    def test_pad_scalar_overflow(self):
+        # pad resolves the fill value in the array dtype, so an out-of-range
+        # python int is rejected instead of being silently truncated, matching
+        # mx.full.
+        with self.assertRaises(ValueError):
+            mx.pad(mx.array([1], mx.int32), 1, constant_values=2**40)
+        with self.assertRaises(ValueError):
+            mx.pad(mx.array([1], mx.int8), 1, constant_values=300)
+        with self.assertRaises(ValueError):
+            mx.pad(mx.array([1], mx.uint8), 1, constant_values=-1)
+
+    def test_weak_scalar_promotion(self):
+        # A python float is weak: it does not widen a narrower floating array,
+        # and promotes int32 to float32.
+        for dtype in (mx.float16, mx.bfloat16, mx.float32):
+            self.assertEqual((mx.array([1.0], dtype=dtype) * 0.1).dtype, dtype)
+        self.assertEqual((mx.array([1], dtype=mx.int32) * 0.1).dtype, mx.float32)
+
+        # pad() keeps returning the input's dtype for every input type
+        for dtype in (mx.int32, mx.float16, mx.bfloat16, mx.float32):
+            padded = mx.pad(mx.array([1.0], dtype=dtype), 1, constant_values=0.5)
+            self.assertEqual(padded.dtype, dtype)
+
     def test_where(self):
         self.assertCmpNumpy([True, mx.array([[1, 2], [3, 4]]), 1], mx.where, np.where)
         self.assertCmpNumpy([True, 1, mx.array([[1, 2], [3, 4]])], mx.where, np.where)
